@@ -104,7 +104,7 @@ and reference them as `${WHATSAPP_PHONE_NUMBER_ID}` / `${WHATSAPP_ACCESS_TOKEN}`
 in `application.properties` instead of hardcoding.
 
 ### Usual items (templates)
-Reusable items (milk, bread, eggs...) you tap to add instead of retyping.
+Reusable items (milk, bread...) you tap to add instead of retyping.
 
 `GET /api/templates` — list your usual items.
 `POST /api/templates` — `{ "name": "Milk", "qty": "1L" }`
