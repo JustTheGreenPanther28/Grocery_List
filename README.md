@@ -1,4 +1,4 @@
-# Grocery List Backend (Spring Boot + Spring Security)
+# Grocery List (Spring Boot + Spring Security + HTML CSS JS)
 
 REST API backing the Grocery List app: two hardcoded accounts, JWT-based auth,
 per-date grocery items, and a WhatsApp send endpoint.
