@@ -22,8 +22,8 @@ Defined in `SecurityConfig.java`:
 
 | username | password    |
 |----------|-------------|
-| vedant   | grocery123  |
-| family   | grocery456  |
+| XYZ   | 123  |
+| PQR   | 123  |
 
 Change them there (passwords are BCrypt-hashed automatically at startup).
 
@@ -44,7 +44,7 @@ repo is a placeholder.
 ### `POST /api/auth/login`
 ```json
 // request
-{ "username": "vedant", "password": "grocery123" }
+{ "username": "XYZ", "password": "123" }
 // response
 { "token": "eyJhbGciOi...", "username": "vedant", "expiresInMs": 86400000 }
 ```
@@ -78,7 +78,7 @@ either sends it directly (if the WhatsApp Cloud API is configured) or returns
 a `wa.me` link for the frontend to open.
 ```json
 // request
-{ "date": "2026-08-01", "toNumber": "919876543210" }
+{ "date": "2026-08-01", "toNumber": "919876543XXX" }
 
 // response (Cloud API not configured — most common case out of the box)
 {
