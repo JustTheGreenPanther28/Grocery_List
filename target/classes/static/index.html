@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Grocery List</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="receipt" id="login-view">
+  <div class="brand">
+    <span class="kicker display">FAMILY MARKET CO.</span>
+    <h1 class="display">GROCERY LIST</h1>
+  </div>
+  <hr class="dashed">
+  <label class="field-label">USERNAME</label>
+  <input type="text" id="login-user" autocomplete="username" placeholder="username">
+  <div style="height:12px;"></div>
+  <label class="field-label">PASSWORD</label>
+  <input type="password" id="login-pass" autocomplete="current-password" placeholder="password">
+  <div class="error-msg" id="login-error"></div>
+  <div style="height:6px;"></div>
+  <button class="btn-primary" id="login-btn">SIGN IN</button>
+  <div class="stamp display">TWO<br>ACCOUNTS<br>ONLY</div>
+</div>
+
+<div class="receipt" id="app-view">
+  <div class="brand">
+    <span class="kicker display">FAMILY MARKET CO.</span>
+    <h1 class="display">GROCERY LIST</h1>
+  </div>
+  <div class="row-between" style="margin-top:14px;">
+    <span class="user-bar">SIGNED IN: <strong id="current-user"></strong></span>
+    <button class="btn-secondary" id="logout-btn">sign out</button>
+  </div>
+  <hr class="dashed">
+
+  <label class="field-label">DATE</label>
+  <input type="date" id="list-date">
+
+  <hr class="dashed">
+
+  <div id="items-loading" class="loading">loading list...</div>
+  <div id="items-error" class="error-msg"></div>
+  <div id="items-container"></div>
+
+  <div class="add-form">
+    <input type="text" id="new-item-name" placeholder="item name">
+    <input type="text" id="new-item-qty" placeholder="qty">
+    <button class="add-btn" id="add-item-btn">+</button>
+  </div>
+
+  <div class="totals">
+    <span>ITEMS: <strong id="item-count">0</strong></span>
+    <span>CHECKED: <strong id="checked-count">0</strong></span>
+  </div>
+
+  <hr class="dashed">
+
+  <div class="row-between">
+    <label class="field-label" style="margin-bottom:0;">USUAL ITEMS</label>
+    <button class="btn-secondary" id="add-all-templates-btn">add all</button>
+  </div>
+  <div id="templates-chips" class="chips-row"></div>
+  <div class="add-form">
+    <input type="text" id="new-template-name" placeholder="new usual item">
+    <input type="text" id="new-template-qty" placeholder="qty">
+    <button class="add-btn" id="add-template-btn">+</button>
+  </div>
+
+  <hr class="dashed">
+
+  <div class="whatsapp-block">
+    <label class="field-label">SEND TO WHATSAPP NUMBER</label>
+    <input type="tel" id="whatsapp-number" placeholder="e.g. 919876543210 (with country code, no +)">
+    <div style="height:10px;"></div>
+    <button class="btn-primary" id="send-btn" style="background:var(--tomato);">SEND LIST &#9656;</button>
+    <div class="error-msg" id="send-error"></div>
+  </div>
+
+  <div class="whatsapp-block">
+    <label class="field-label">SEND TO GMAIL</label>
+    <input type="email" id="email-address" placeholder="e.g. family@gmail.com">
+    <div style="height:10px;"></div>
+    <button class="btn-primary" id="send-email-btn" style="background:var(--gold);">EMAIL LIST &#9656;</button>
+    <div class="error-msg" id="email-error"></div>
+  </div>
+
+  <hr class="dashed">
+
+  <div class="row-between">
+    <label class="field-label" style="margin-bottom:0;">AUTO-SEND</label>
+    <label class="toggle-switch">
+      <input type="checkbox" id="schedule-enabled">
+      <span></span>
+    </label>
+  </div>
+  <div id="schedule-fields" class="schedule-fields">
+    <select id="schedule-day"></select>
+    <input type="number" id="schedule-hour" min="0" max="23" placeholder="HH">
+    <input type="number" id="schedule-minute" min="0" max="59" placeholder="MM">
+  </div>
+  <div class="schedule-fields" style="margin-top:6px;">
+    <select id="schedule-channel">
+      <option value="WHATSAPP">WhatsApp</option>
+      <option value="EMAIL">Gmail</option>
+    </select>
+    <input type="text" id="schedule-number" placeholder="number or email to auto-send to" style="flex:2;">
+  </div>
+  <div style="height:8px;"></div>
+  <button class="btn-secondary" id="save-schedule-btn">save schedule</button>
+  <div class="error-msg" id="schedule-error"></div>
+  <div class="empty-state" id="schedule-hint">Sends today's list automatically at the chosen day/time - only fires while the server is awake, see README.</div>
+
+  <hr class="dashed">
+
+  <div class="row-between">
+    <label class="field-label" style="margin-bottom:0;">SEND HISTORY</label>
+    <button class="btn-secondary" id="toggle-history-btn">show</button>
+  </div>
+  <div id="history-list" class="history-list" style="display:none;"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="js/app.js"></script>
+</body>
+</html>

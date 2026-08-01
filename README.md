@@ -102,6 +102,57 @@ export WHATSAPP_ACCESS_TOKEN=...
 and reference them as `${WHATSAPP_PHONE_NUMBER_ID}` / `${WHATSAPP_ACCESS_TOKEN}`
 in `application.properties` instead of hardcoding.
 
+### Usual items (templates)
+Reusable items (milk, bread, eggs...) you tap to add instead of retyping.
+
+`GET /api/templates` — list your usual items.
+`POST /api/templates` — `{ "name": "Milk", "qty": "1L" }`
+`DELETE /api/templates/{id}`
+`POST /api/templates/{id}/add?date=2026-08-01` — copies that one item onto the date's list.
+`POST /api/templates/add-all?date=2026-08-01` — copies every usual item onto the date's list at once.
+
+### Sending by Gmail
+`POST /api/email/send`
+```json
+{ "date": "2026-08-01", "toEmail": "family@gmail.com" }
+```
+Requires `GMAIL_USERNAME` (the Gmail address to send *from*) and `GMAIL_APP_PASSWORD` as env vars.
+Gmail blocks SMTP login with your normal password — generate an **app password** instead:
+Google Account → Security → 2-Step Verification (must be on) → App passwords → generate one for
+"Mail", and use that 16-character value as `GMAIL_APP_PASSWORD`.
+
+### Send history
+`GET /api/whatsapp/history` — every send across **both** channels (WhatsApp and Gmail, manual or
+scheduled) for the logged-in user, most recent first, each entry tagged with `channel`. Add
+`?date=2026-08-01` to filter to one list's sends.
+
+### Auto-send schedule
+One schedule per user: "send today's list every &lt;day&gt; at &lt;time&gt; via &lt;WhatsApp or
+Gmail&gt; to &lt;recipient&gt;".
+
+`GET /api/whatsapp/schedule` — current schedule, or `204 No Content` if none is set.
+`PUT /api/whatsapp/schedule`
+```json
+{ "enabled": true, "dayOfWeek": "SATURDAY", "hour": 9, "minute": 0, "channel": "EMAIL", "toNumber": "family@gmail.com" }
+```
+`channel` is `"WHATSAPP"` or `"EMAIL"` (defaults to `WHATSAPP` if omitted). `toNumber` holds a phone
+number or an email address depending on the channel.
+
+A background job (`ScheduledSendService`, `@Scheduled(cron = "0 * * * * *")`) checks every minute and
+fires the send if the day/hour/minute matches and it hasn't already sent for today.
+
+**Important caveat**: this only fires while the server process is actually running at that minute.
+Render's free tier spins the server down after ~15 minutes of no traffic and only wakes it up on
+an incoming request — so a scheduled send at, say, 9:00 AM will simply be missed if the app was
+asleep. Options if you want this reliable:
+- Upgrade to a Render plan that doesn't sleep.
+- Use a free external cron pinger (e.g. cron-job.org, UptimeRobot) to hit any endpoint (e.g.
+  `GET /api/groceries?date=...` with a valid token, or add a lightweight public health-check route)
+  once a minute so the app never fully sleeps.
+- Move the scheduled trigger itself external: have the cron pinger call a dedicated
+  `/api/whatsapp/trigger-scheduled` endpoint instead of relying on Spring's in-process `@Scheduled` —
+  more reliable than hoping the app happens to be awake at the exact minute.
+
 ## CORS
 Wide open (`*`) by default in `application.properties` so the static HTML
 frontend can call it from anywhere while you're developing. Lock this down to
@@ -138,6 +189,3 @@ grocery-backend/
   src/main/resources/application.properties
   pom.xml
 ```
-"# Grocery_List" 
-"# Grocery_List" 
-"# Grocery_List" 
