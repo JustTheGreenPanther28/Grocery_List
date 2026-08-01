@@ -9,6 +9,7 @@ per-date grocery items, and a WhatsApp send endpoint.
 - Spring Data JPA + H2 in-memory database (data resets on restart — swap for
   MySQL/Postgres by changing `application.properties` if you want it to persist)
 - `jjwt` for token generation/validation
+-  HTML CSS JS
 
 ## Run it
 ```bash
