@@ -1,4 +1,4 @@
-# Grocery List Backend (Spring Boot + Spring Security)
+# Grocery List (Spring Boot + Spring Security + HTML CSS JS)
 
 REST API backing the Grocery List app: two hardcoded accounts, JWT-based auth,
 per-date grocery items, and a WhatsApp send endpoint.
@@ -9,6 +9,7 @@ per-date grocery items, and a WhatsApp send endpoint.
 - Spring Data JPA + H2 in-memory database (data resets on restart — swap for
   MySQL/Postgres by changing `application.properties` if you want it to persist)
 - `jjwt` for token generation/validation
+-  HTML CSS JS
 
 ## Run it
 ```bash
@@ -22,8 +23,8 @@ Defined in `SecurityConfig.java`:
 
 | username | password    |
 |----------|-------------|
-| vedant   | grocery123  |
-| family   | grocery456  |
+| XYZ   | 123  |
+| PQR   | 123  |
 
 Change them there (passwords are BCrypt-hashed automatically at startup).
 
@@ -44,9 +45,9 @@ repo is a placeholder.
 ### `POST /api/auth/login`
 ```json
 // request
-{ "username": "vedant", "password": "grocery123" }
+{ "username": "XYZ", "password": "123" }
 // response
-{ "token": "eyJhbGciOi...", "username": "vedant", "expiresInMs": 86400000 }
+{ "token": "eyJhbGciOi...", "username": "XYZ", "expiresInMs": 86400000 }
 ```
 
 ### `GET /api/groceries?date=2026-08-01`
@@ -78,7 +79,7 @@ either sends it directly (if the WhatsApp Cloud API is configured) or returns
 a `wa.me` link for the frontend to open.
 ```json
 // request
-{ "date": "2026-08-01", "toNumber": "919876543210" }
+{ "date": "2026-08-01", "toNumber": "919876543XXX" }
 
 // response (Cloud API not configured — most common case out of the box)
 {
