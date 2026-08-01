@@ -47,7 +47,7 @@ repo is a placeholder.
 // request
 { "username": "XYZ", "password": "123" }
 // response
-{ "token": "eyJhbGciOi...", "username": "vedant", "expiresInMs": 86400000 }
+{ "token": "eyJhbGciOi...", "username": "XYZ", "expiresInMs": 86400000 }
 ```
 
 ### `GET /api/groceries?date=2026-08-01`
