@@ -1,24 +1,28 @@
 package com.grocery.service;
 
-import com.grocery.dto.EmailSendResponse;
-import com.grocery.model.GroceryItem;
-import com.grocery.model.SentMessage;
-import com.grocery.repository.SentMessageRepository;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
-import java.util.List;
+import com.grocery.dto.EmailSendResponse;
+import com.grocery.model.GroceryItem;
+import com.grocery.model.SentMessage;
+import com.grocery.repository.SentMessageRepository;
 
 @Service
 public class EmailService {
 
     @Value("${spring.mail.username:}")
     private String fromAddress;
-
+    
+    @Value("${SEND_EMAIL_FROM}")
+    private String sendTo;
+    
     private final JavaMailSender mailSender;
     private final SentMessageRepository sentMessageRepository;
 
@@ -27,9 +31,9 @@ public class EmailService {
         this.sentMessageRepository = sentMessageRepository;
     }
 
-    // automatic=false for a manual "Send by Email" tap, true when the scheduler fired it.
     public EmailSendResponse sendGroceryList(String username, String toEmail, LocalDate date,
                                               List<GroceryItem> items, boolean automatic) {
+    	
         String text = GroceryListMessageFormatter.build(date, items);
         boolean configured = fromAddress != null && !fromAddress.isBlank();
 
@@ -40,7 +44,7 @@ public class EmailService {
         } else {
             try {
                 SimpleMailMessage message = new SimpleMailMessage();
-                message.setFrom(fromAddress);
+                message.setFrom(this.sendTo);
                 message.setTo(toEmail);
                 message.setSubject("Grocery List - " + date.format(DateTimeFormatter.ISO_LOCAL_DATE));
                 message.setText(text);

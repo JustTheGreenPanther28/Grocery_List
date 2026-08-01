@@ -3,7 +3,6 @@ package com.grocery.model;
 import jakarta.persistence.*;
 
 // A "usual item" the user can tap to instantly add to any date's list,
-// instead of retyping milk/bread/eggs every week.
 @Entity
 @Table(name = "template_items")
 public class TemplateItem {

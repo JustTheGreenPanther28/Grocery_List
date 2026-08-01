@@ -235,8 +235,8 @@ button:disabled {
   gap: 6px;
   margin-top: 12px;
 }
-.add-form input:first-child { flex: 2; }
-.add-form input:last-child { flex: 1; }
+.add-form input:nth-child(1) { flex: 2; }
+.add-form input:nth-child(2) { flex: 1; }
 .add-btn {
   background: var(--ink);
   color: var(--paper);
