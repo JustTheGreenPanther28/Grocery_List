@@ -40,6 +40,80 @@ Change them there (passwords are BCrypt-hashed automatically at startup).
 `application.properties` with your own long random string — the one in the
 repo is a placeholder.
 
+## Complete API Flow (End-to-End)
+
+Two things are covered here: (A) what happens to a single request as it
+travels through the app, and (B) the typical order you'd actually call the
+endpoints in, start to finish.
+
+### A. What happens to one request, step by step
+
+Take `GET /api/groceries?date=2026-08-01` as the example — every other
+protected endpoint follows the same path.
+
+1. **Request arrives at Tomcat.** The embedded web server picks a thread
+   from its own request-handling pool to run this request (a different
+   pool from the scheduler/async pools described further down).
+2. **CORS check.** Spring checks the request's origin against
+   `app.cors.allowed-origins`. Wide open (`*`) by default here.
+3. **`JwtAuthFilter` runs first**, before the request reaches any
+   controller. It reads the `Authorization: Bearer <token>` header, and if
+   present, uses `JwtUtil` to validate the token's signature and expiry.
+   If valid, it loads the user via `CustomUserDetailsService` and sets
+   them as the authenticated principal for this request. If the token is
+   missing, expired, or invalid, the request is rejected here — it never
+   reaches your controller code at all.
+4. **`SecurityConfig` enforces the access rule** for this path — `/api/auth/login`
+   is explicitly open, everything else under `/api/**` requires the
+   authenticated principal set in step 3 to exist.
+5. **Spring routes the request to the matching controller method** —
+   here, `GroceryController`'s method mapped to `GET /api/groceries`.
+6. **The controller reads `Authentication` to get the username**, then
+   calls `groceryService.getItems(username, date)`. Controllers in this
+   app don't touch the database directly — they always go through a
+   `*Service` class.
+7. **The service calls the repository** — `groceryItemRepository.findByUsernameAndDate(...)`
+   — a Spring Data JPA interface. Spring generates the actual SQL from the
+   method name at startup; there's no hand-written query here.
+8. **The repository hits H2 (or Postgres, depending on config)** and
+   returns the matching rows as Java objects.
+9. **The service maps entities to DTOs** (`GroceryItemResponse`) — the
+   internal database shape is never returned directly to the client.
+10. **The controller returns the DTO list**, Spring serializes it to JSON,
+    and the response goes back down through the same thread that picked up
+    the request in step 1. The thread is now free for the next request.
+
+Every protected endpoint in this app — grocery CRUD, templates, WhatsApp
+send, email send, schedule get/set — follows steps 1–10 exactly the same
+way; only step 5 onward (which controller, which service, which
+repository) changes.
+
+### B. Typical end-to-end usage sequence
+
+This is the order the frontend actually drives things in, tying together
+the endpoints documented below in **API Reference**:
+
+1. `POST /api/auth/login` → get a JWT. Every step after this sends it as
+   `Authorization: Bearer <token>`.
+2. `GET /api/groceries?date=...` → load the list for today (empty on first use).
+3. Build the list up, either by:
+   - `POST /api/groceries` for one-off items, or
+   - `GET /api/templates` then `POST /api/templates/{id}/add?date=...`
+     (or `POST /api/templates/add-all?date=...`) to reuse saved "usual items".
+4. `PUT /api/groceries/{id}` to tick items off / edit them,
+   `DELETE /api/groceries/{id}` to remove one.
+5. Send the finished list, either:
+   - **Manually, right now** — `POST /api/whatsapp/send` or
+     `POST /api/email/send`. Both run synchronously and return
+     success/failure (or a `wa.me` link) immediately, on the same request
+     thread from part A above.
+   - **Automatically, later** — `PUT /api/whatsapp/schedule` once, to set
+     "send every &lt;day&gt; at &lt;time&gt; via &lt;channel&gt;". From
+     then on, the background scheduler (see the dedicated flow section
+     below) handles it without any further request from the client.
+6. `GET /api/whatsapp/history` anytime → see every send, manual or
+   scheduled, across both channels.
+
 ## API Reference
 
 ### `POST /api/auth/login`
@@ -321,6 +395,237 @@ expired token, or the recipient being outside the messaging window — it
 catches the exception and falls back to returning a `wa.me` deep link
 instead, so the feature degrades gracefully to "tap send yourself" rather
 than breaking outright.
+
+### 5. `@Scheduled` alone wasn't enough — one slow send could stall every user's auto-send
+
+This one's explained step by step, starting from the basics, because the
+bug only makes sense once a few Spring concepts are laid out first.
+
+**Step 1 — what `@Scheduled` actually does.** The `@Scheduled(cron = "0 * * * * *")`
+annotation on `checkAndSend()` tells Spring "run this method automatically,
+once a minute, forever, without anyone calling it." Spring needs somewhere
+to actually *run* that method — some thread of execution — and for that it
+uses something called a `TaskScheduler`.
+
+**Step 2 — what a thread is, briefly.** A thread is a single line of
+execution inside the running program. A program can have many threads
+running different pieces of code at the same time (that's how a web
+server can handle many requests at once — one thread per request, roughly).
+But a single thread can only ever do one thing at a time; if it's busy, it
+can't start a second task until it finishes the first.
+
+**Step 3 — Spring Boot's default `@Scheduled` thread pool size.** By
+default, Spring Boot gives all of your `@Scheduled` methods combined
+exactly **one single thread** to run on, unless you explicitly configure
+more. That's fine if what runs on that thread is always fast. It becomes
+a problem the moment something on that thread can take a long, unpredictable
+amount of time.
+
+**Step 4 — what `checkAndSend()` was actually doing on that one thread.**
+Before this fix, the method's logic was: loop over every enabled
+`ScheduledSend` row, and for each one that's due right now, directly call
+either `whatsAppService.sendGroceryList(...)` or
+`emailService.sendGroceryList(...)` — and *wait* for that call to return
+before moving to the next row. Those two calls are the real work:
+`WhatsAppService` sends an HTTP request to `graph.facebook.com` via
+`RestTemplate`, and `EmailService` opens an SMTP connection via
+`JavaMailSender` to send an email. Both of those are network calls to
+servers outside our control.
+
+**Step 5 — what happens when a network call has no timeout.** Neither
+`RestTemplate` nor `JavaMailSender` was configured with a timeout in the
+original code. "No timeout" means: if the other server (Facebook's API, or
+the Brevo SMTP relay) is slow to respond, or the network connection stalls,
+the calling thread just... waits. Not for a few seconds — for as long as it
+takes, which could be minutes, or theoretically forever if the connection
+never properly closes.
+
+**Step 6 — put steps 3, 4, and 5 together: this is the actual bug.**
+There is exactly one thread available for scheduled tasks (step 3). That
+one thread is the same thread running the network calls with no timeout
+(steps 4 and 5). So if `graph.facebook.com` or the SMTP relay ever stalls
+even slightly, the scheduler's one and only thread gets stuck waiting
+inside that single network call, with nothing to make it give up.
+
+**Step 7 — why that's worse than it sounds.** Because it's the *same*
+thread every time, the damage isn't limited to the one slow send:
+
+- **Every other user's due schedule in that same run has to wait its turn**,
+  because the `for` loop can't reach the next row until the current call
+  returns. If User A's send hangs, User B's message doesn't even get
+  *attempted* — not delayed, not attempted at all — until User A's call
+  finally finishes or times out (which, per step 5, it may never do).
+- **Every future minute's run is blocked too**, because there's still only
+  one thread, and it's still stuck. From the outside, this looks like the
+  entire auto-send feature has silently stopped working, with no error
+  logged anywhere to explain why — the cron just never fires again.
+- One thing it does *not* do: slow down your actual REST API (login,
+  adding groceries, etc.). Those run on Tomcat's separate pool of request
+  threads, which is untouched by this. So the symptom would be specifically
+  "scheduled sends silently stop," not "the whole server is sluggish."
+
+**Step 8 — why a quick fix like "just add more scheduler threads"
+(`spring.task.scheduling.pool.size=5`) isn't a real fix.** It raises the
+number of sends that can hang *at once* before you hit the same wall
+again — but the underlying issue is still there: a network call with no
+upper bound on how long it can occupy a thread that other work depends on.
+More threads delay the symptom; they don't remove the cause.
+
+**Step 9 — the real fix, part 1: give the sends their own separate lane
+(`@Async`).** First, what `@Async` actually does, in plain terms:
+
+- **Without `@Async`** (a normal method call): when one method calls
+  another — say, `checkAndSend()` calls `dispatch(...)` — that call runs on
+  the *same* thread as the caller. The caller is now frozen, unable to do
+  anything else, until the called method finishes and returns. If
+  `dispatch(...)` takes 10 seconds because it's waiting on a network call,
+  the caller is stuck waiting those same 10 seconds.
+- **With `@Async`**: Spring runs the annotated method on a *different*
+  thread entirely — pulled from a separate thread pool — and the call
+  returns to the caller immediately, without waiting for the async method
+  to actually finish. The caller carries on with its own work right away;
+  the async method finishes later, in the background, on its own thread.
+
+That's the purpose it serves here: `checkAndSend()` runs on Spring's one
+and only scheduler thread. What we actually want is for that thread to
+just fire off each send and immediately move to the next row in the loop
+— not sit there waiting to find out if the send worked. `@Async` is
+exactly the mechanism for that: it decouples *how long the send takes*
+from *how long the scheduler thread is blocked*.
+
+To wire that up:
+- Added a new `AsyncConfig` class with `@EnableAsync` (turns the feature
+  on for the app) and a `ThreadPoolTaskExecutor` bean named
+  `scheduledSendExecutor` — a small dedicated pool (2 to 4 threads) that
+  exists *only* for these sends, completely separate from the 1-thread
+  scheduler pool.
+- Moved the actual "send the message, then mark the schedule as
+  triggered" logic out of `ScheduledSendService` and into a new class,
+  `ScheduledSendDispatcher`, whose `dispatch(...)` method is annotated
+  `@Async("scheduledSendExecutor")`.
+- `checkAndSend()` now just calls `dispatcher.dispatch(schedule, today,
+  items)` for each due row and immediately continues to the next row in
+  the loop — it hands off the work and doesn't wait around for it.
+
+**Step 10 — a subtlety worth understanding: why the dispatch method
+couldn't just live inside `ScheduledSendService` itself.** This is a real
+Spring gotcha, worth knowing beyond just this project. `@Async` (and
+`@Transactional`, which works the same way) is implemented using a proxy —
+Spring wraps your bean in an invisible wrapper object that intercepts calls
+to it from *outside* the class and redirects them to run asynchronously.
+But if a method calls another method *on itself* (`this.dispatch(...)`),
+that call never goes through the proxy at all — it's just a normal direct
+Java method call, so the `@Async` annotation is silently ignored and the
+method runs synchronously, defeating the whole point. That's exactly why
+`dispatch(...)` had to be moved to a separate class (`ScheduledSendDispatcher`)
+that `ScheduledSendService` calls into from the outside, through Spring's
+proxy, where `@Async` actually takes effect.
+
+**Step 11 — the real fix, part 2: timeouts, so a stuck call fails instead
+of hanging.** `@Async` alone only moves *where* the blocking risk lives —
+it doesn't remove it. If sends keep hanging indefinitely, the new
+`scheduledSendExecutor` pool (capped at 4 threads, 50-deep queue) would
+eventually fill up too, just more slowly than before. So the network calls
+themselves were also given upper bounds:
+- `WhatsAppService`'s `RestTemplate` is now built with a `RestTemplateBuilder`
+  specifying a 5-second connect timeout and a 10-second read timeout,
+  instead of a bare `new RestTemplate()` with no limits.
+- `application.properties` now sets `mail.smtp.connectiontimeout`,
+  `mail.smtp.timeout`, and `mail.smtp.writetimeout` (all in milliseconds)
+  so the SMTP send is bounded the same way.
+
+**Step 12 — the end result, put together.** Worst case now: a bad or
+stalled network call ties up one background thread for at most ~10
+seconds, then fails cleanly and gets logged as a failure — instead of
+hanging forever and silently freezing the entire auto-send feature for
+every user.
+
+**One more deliberate choice:** the manual "Send List" button in the
+frontend (`POST /api/whatsapp/send`, `POST /api/email/send`) was left
+exactly as it was — synchronous, not `@Async`. That's intentional: a
+manual send is a direct user action, and the user is looking at the screen
+waiting for a success/failure response right away. Only the *automatic*,
+unattended scheduler path needed to become non-blocking.
+
+### The scheduled auto-send system — full runtime flow
+
+Putting the fix above into motion, this is everything that happens, in order,
+from app startup onward.
+
+**1. App starts up.**
+`@EnableScheduling` on `GroceryBackendApplication` starts Spring's internal
+clock that fires `@Scheduled` methods. `AsyncConfig` registers the
+`scheduledSendExecutor` thread pool (2–4 threads) and turns on `@EnableAsync`,
+giving `@Async` methods somewhere to actually run. At this point there are
+two separate, idle thread pools waiting:
+- **Scheduler pool** — 1 thread, dedicated to firing `@Scheduled` methods.
+- **`scheduledSendExecutor` pool** — 2–4 threads, dedicated to `@Async` methods.
+
+**2. Every 60 seconds, the clock ticks.**
+The cron `"0 * * * * *"` fires. Spring's 1 scheduler thread calls
+`ScheduledSendService.checkAndSend()`.
+
+**3. `checkAndSend()` runs, still on that 1 scheduler thread.**
+```
+now = current time
+today = current date
+due  = scheduledSendRepository.findByEnabledTrue()   // small, cheap query
+```
+It loops over every enabled `ScheduledSend` row, checking whether its
+`dayOfWeek`/`hour`/`minute` matches right now, and whether it already sent
+today.
+
+**4. For each row that's actually due right now:**
+```
+items = groceryService.getItems(username, today)   // still on scheduler thread
+dispatcher.dispatch(schedule, today, items)         // <-- the hand-off
+```
+`dispatch(...)` is `@Async`, so calling it doesn't run the method here — it
+queues the work onto the `scheduledSendExecutor` pool and **returns
+immediately**, without waiting for it to finish.
+
+**5. The scheduler thread is now free.**
+It moves straight to the next due row (repeat step 4 if there's another
+user), and once the loop ends, `checkAndSend()` returns. The scheduler
+thread never touched the network — it's done for this minute.
+
+**6. Meanwhile, in parallel, on a `scheduledSendExecutor` thread:**
+`ScheduledSendDispatcher.dispatch(...)` actually runs:
+```
+if channel == EMAIL:
+    emailService.sendGroceryList(...)     // SMTP call, 5s/10s timeout
+else:
+    whatsAppService.sendGroceryList(...)  // HTTP call to graph.facebook.com, 5s/10s timeout
+schedule.enabled = false
+schedule.lastTriggeredDate = today
+scheduledSendRepository.save(schedule)
+```
+If this call is slow or the network stalls, it can now block for **at most
+~10 seconds** (the timeouts from Step 11 above), then fails cleanly and
+moves on. It ties up one of the 2–4 executor threads — never the scheduler
+thread, never a web request thread.
+
+**7. If two users are due in the same minute:**
+Both get `dispatch(...)` calls queued from the scheduler thread almost
+instantly (steps 4–5 happen fast, no waiting). Both then run on the
+executor pool — genuinely in parallel if 2+ threads are free, or briefly
+queued behind each other if all are busy. Either way, User B is never
+stuck waiting on User A the way it was before this fix.
+
+**8. Separately, the manual path never touches any of this.**
+When someone taps "Send List" in the UI, `WhatsAppController`/`EmailController`
+call `sendGroceryList(...)` directly and synchronously, on the Tomcat
+request thread handling that click (see **Complete API Flow** above). The
+HTTP response waits for it and returns success/failure right away. This
+path doesn't involve `@Scheduled` or `@Async` at all.
+
+**The three thread pools involved, side by side:**
+
+| Pool | Size | Runs | Can it block on network I/O? |
+|---|---|---|---|
+| Scheduler | 1 thread | `checkAndSend()` only | No — it never does the send itself anymore |
+| `scheduledSendExecutor` | 2–4 threads | `dispatch()` (auto-sends) | Yes, but capped at ~10s by timeouts |
+| Tomcat request pool | many threads | manual "Send List" clicks | Yes, but it's one request for one user — expected to wait |
 
 ## Architecture & Design Decisions
 
