@@ -21,15 +21,13 @@ public class ScheduledSendService {
 
 	private final ScheduledSendRepository scheduledSendRepository;
 	private final GroceryService groceryService;
-	private final WhatsAppService whatsAppService;
-	private final EmailService emailService;
+	private final ScheduledSendDispatcher dispatcher;
 
 	public ScheduledSendService(ScheduledSendRepository scheduledSendRepository, GroceryService groceryService,
-			WhatsAppService whatsAppService, EmailService emailService) {
+			ScheduledSendDispatcher dispatcher) {
 		this.scheduledSendRepository = scheduledSendRepository;
 		this.groceryService = groceryService;
-		this.whatsAppService = whatsAppService;
-		this.emailService = emailService;
+		this.dispatcher = dispatcher;
 	}
 
 	public Optional<ScheduledSend> get(String username) {
@@ -73,18 +71,10 @@ public class ScheduledSendService {
 
 			if (isDue && !alreadySentToday) {
 				List<GroceryItem> items = groceryService.getItems(schedule.getUsername(), today);
-				if (!items.isEmpty()) {
-					if ("EMAIL".equals(schedule.getChannel())) {
-						emailService.sendGroceryList(schedule.getUsername(), schedule.getToNumber(), today, items,
-								true);
-					} else {
-						whatsAppService.sendGroceryList(schedule.getUsername(), schedule.getToNumber(), today, items,
-								true);
-					}
-				}
-				schedule.setEnabled(false);
-				schedule.setLastTriggeredDate(today);
-				scheduledSendRepository.save(schedule);
+				// Hands the actual send + save off to the async executor and returns
+				// immediately, so one slow WhatsApp/SMTP call can't stall this loop
+				// (and therefore every other user's due schedule) or next minute's run.
+				dispatcher.dispatch(schedule, today, items);
 			}
 		}
 	}

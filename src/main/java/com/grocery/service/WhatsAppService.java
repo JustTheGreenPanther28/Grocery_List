@@ -5,6 +5,7 @@ import com.grocery.model.GroceryItem;
 import com.grocery.model.SentMessage;
 import com.grocery.repository.SentMessageRepository;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -12,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
@@ -27,7 +29,13 @@ public class WhatsAppService {
     @Value("${whatsapp.access-token:}")
     private String accessToken;
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    // No-timeout RestTemplate() would block indefinitely if graph.facebook.com
+    // stalls; these bound worst-case time to fail so a stuck request can't
+    // tie up a thread forever.
+    private final RestTemplate restTemplate = new RestTemplateBuilder()
+            .setConnectTimeout(Duration.ofSeconds(5))
+            .setReadTimeout(Duration.ofSeconds(10))
+            .build();
     private final SentMessageRepository sentMessageRepository;
 
     public WhatsAppService(SentMessageRepository sentMessageRepository) {

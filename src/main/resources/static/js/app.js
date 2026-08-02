@@ -295,6 +295,7 @@
           window.open(result.waLink, '_blank');
         }
       }
+      await invalidateHistory();
     } catch (err) {
       if (err.message !== 'Unauthorized') {
         sendError.textContent = err.message || 'Could not send the list.';
@@ -330,6 +331,7 @@
         body: JSON.stringify({ date: currentDate, toEmail })
       });
       showToast(result.message || (result.sent ? 'Email sent!' : 'Could not send email'));
+      await invalidateHistory();
     } catch (err) {
       if (err.message !== 'Unauthorized') {
         emailError.textContent = err.message || 'Could not send the email.';
@@ -516,6 +518,17 @@
       toggleHistoryBtn.textContent = 'show';
     }
   });
+
+  // Called after any successful send so the cached list doesn't go stale.
+  // If the panel is already open, refresh it right away; otherwise just
+  // drop the cache flag so the next "show" tap re-fetches it.
+  async function invalidateHistory() {
+    historyLoaded = false;
+    if (historyList.style.display !== 'none') {
+      await loadHistory();
+      historyLoaded = true;
+    }
+  }
 
   async function loadHistory() {
     historyList.innerHTML = '<div class="loading">loading history...</div>';
