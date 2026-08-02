@@ -28,7 +28,8 @@ public class EmailController {
 
     @PostMapping("/send")
     public EmailSendResponse send(@Valid @RequestBody EmailSendRequest request, Authentication authentication) {
-        String username = authentication.getName();
+
+		String username = authentication.getName();
         List<GroceryItem> items = groceryService.getItems(username, request.getDate());
         return emailService.sendGroceryList(username, request.getToEmail(), request.getDate(), items, false);
     }

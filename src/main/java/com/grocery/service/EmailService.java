@@ -8,7 +8,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
-
+import org.springframework.web.cors.CorsConfigurationSource;
 import com.grocery.dto.EmailSendResponse;
 import com.grocery.model.GroceryItem;
 import com.grocery.model.SentMessage;
@@ -26,7 +26,7 @@ public class EmailService {
     private final JavaMailSender mailSender;
     private final SentMessageRepository sentMessageRepository;
 
-    public EmailService(JavaMailSender mailSender, SentMessageRepository sentMessageRepository) {
+    public EmailService(JavaMailSender mailSender, SentMessageRepository sentMessageRepository ) {
         this.mailSender = mailSender;
         this.sentMessageRepository = sentMessageRepository;
     }
@@ -49,6 +49,7 @@ public class EmailService {
                 message.setSubject("Grocery List - " + date.format(DateTimeFormatter.ISO_LOCAL_DATE));
                 message.setText(text);
                 mailSender.send(message);
+                
                 response = new EmailSendResponse(true, "Email sent.");
             } catch (Exception ex) {
                 response = new EmailSendResponse(false, "Could not send email: " + ex.getMessage());

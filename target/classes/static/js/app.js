@@ -1,5 +1,5 @@
 (function () {
-  const API_BASE = 'https://grocery-list-9ju2.onrender.com';
+  const API_BASE = ''
 
   const TOKEN_KEY = 'grocery_jwt';
   const USER_KEY = 'grocery_username';

@@ -27,7 +27,7 @@ public class ScheduledSendDispatcher {
 		this.emailService = emailService;
 	}
 
-	@Async("scheduledSendExecutor")
+//	@Async("scheduledSendExecutor")
 	public void dispatch(ScheduledSend schedule, LocalDate today, List<GroceryItem> items) {
 		if (!items.isEmpty()) {
 			if ("EMAIL".equals(schedule.getChannel())) {
