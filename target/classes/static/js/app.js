@@ -1,8 +1,4 @@
 (function () {
-  // Since this file is served by the same Spring Boot app (from /static),
-  // relative paths hit the same origin - no CORS/base-URL config needed.
-  // If you ever host the frontend separately, change this to the full
-  // backend URL, e.g. 'https://your-api-domain.com'.
   const API_BASE = 'https://grocery-list-9ju2.onrender.com';
 
   const TOKEN_KEY = 'grocery_jwt';
