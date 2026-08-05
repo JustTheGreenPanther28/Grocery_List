@@ -13,7 +13,6 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 // @Scheduled pool so a slow/hung send can never block the per-minute
 // checkAndSend() run for other users.
 @Configuration
-@EnableAsync
 public class AsyncConfig implements AsyncConfigurer {
 
 	@Bean(name = "scheduledSendExecutor")

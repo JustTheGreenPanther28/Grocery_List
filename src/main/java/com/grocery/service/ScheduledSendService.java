@@ -15,7 +15,6 @@ import java.util.Optional;
 
 // Handles "send my list automatically every <day> at <time>". This only
 // works while the server process is actually running at that minute - see
-// the note on Render's free tier in the controller/README.
 @Service
 public class ScheduledSendService {
 
@@ -49,10 +48,9 @@ public class ScheduledSendService {
 		schedule.setHour(request.getHour());
 		schedule.setMinute(request.getMinute());
 		schedule.setChannel(channel);
-		// Only strip to digits for a phone number - an email address needs its
-		// punctuation kept.
 		schedule.setToNumber("EMAIL".equals(channel) ? request.getToNumber().trim()
 				: request.getToNumber().replaceAll("[^0-9]", ""));
+		schedule.setGroceryDateTimeStamp(request.getGroceryTimeStamp());
 		return scheduledSendRepository.save(schedule);
 	}
 
@@ -61,20 +59,19 @@ public class ScheduledSendService {
 	@Scheduled(cron = "0 * * * * *")
 	public void checkAndSend() {
 		LocalDateTime now = LocalDateTime.now();
-		LocalDate today = now.toLocalDate();
 		List<ScheduledSend> due = scheduledSendRepository.findByEnabledTrue();
 
 		for (ScheduledSend schedule : due) {
-			boolean isDue = schedule.getDayOfWeek() == now.getDayOfWeek() && schedule.getHour() == now.getHour()
+			boolean isDue = schedule.getDayOfWeek().toString().toLowerCase()
+					.equals(now.getDayOfWeek().toString().toLowerCase()) && schedule.getHour() == now.getHour()
 					&& schedule.getMinute() == now.getMinute();
-			boolean alreadySentToday = today.equals(schedule.getLastTriggeredDate());
 
-			if (isDue && !alreadySentToday) {
-				List<GroceryItem> items = groceryService.getItems(schedule.getUsername(), today);
+			if (isDue) {
+				List<GroceryItem> items = groceryService.getItems(schedule.getUsername(),
+						schedule.getGroceryDateTimeStamp().toLocalDate());
 				// Hands the actual send + save off to the async executor and returns
 				// immediately, so one slow WhatsApp/SMTP call can't stall this loop
-				// (and therefore every other user's due schedule) or next minute's run.
-				dispatcher.dispatch(schedule, today, items);
+				dispatcher.dispatch(schedule, schedule.getGroceryDateTimeStamp().toLocalDate(), items);
 			}
 		}
 	}

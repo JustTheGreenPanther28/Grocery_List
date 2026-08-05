@@ -1,5 +1,7 @@
 package com.grocery.dto;
 
+import java.time.LocalDateTime;
+
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -23,6 +25,9 @@ public class ScheduledSendRequest {
 	private int minute;
 
 	private String toNumber;
+	
+	@NotNull
+	private LocalDateTime groceryDateTimeStamp;
 
 	// "WHATSAPP" or "EMAIL" - defaults to WHATSAPP if omitted for backward
 	private String channel = "WHATSAPP";
@@ -73,5 +78,13 @@ public class ScheduledSendRequest {
 
 	public void setToNumber(String toNumber) {
 		this.toNumber = toNumber;
+	}
+
+	public LocalDateTime getGroceryTimeStamp() {
+		return groceryDateTimeStamp;
+	}
+
+	public void setGroceryDateTimeStamp(LocalDateTime groceryDateTimeStamp) {
+		this.groceryDateTimeStamp = groceryDateTimeStamp;
 	}
 }
