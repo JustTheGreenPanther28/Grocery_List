@@ -1,5 +1,9 @@
 (function () {
-  const API_BASE = ''
+  // Since this file is served by the same Spring Boot app (from /static),
+  // relative paths hit the same origin - no CORS/base-URL config needed.
+  // If you ever host the frontend separately, change this to the full
+  // backend URL, e.g. 'https://your-api-domain.com'.
+  const API_BASE = '';
 
   const TOKEN_KEY = 'grocery_jwt';
   const USER_KEY = 'grocery_username';

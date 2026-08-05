@@ -1,9 +1,13 @@
 package com.grocery.service;
 
-import com.grocery.dto.WhatsAppSendResponse;
-import com.grocery.model.GroceryItem;
-import com.grocery.model.SentMessage;
-import com.grocery.repository.SentMessageRepository;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.LocalDate;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.http.HttpEntity;
@@ -12,13 +16,10 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import com.grocery.dto.WhatsAppSendResponse;
+import com.grocery.model.GroceryItem;
+import com.grocery.model.SentMessage;
+import com.grocery.repository.SentMessageRepository;
 
 @Service
 public class WhatsAppService {
@@ -43,9 +44,10 @@ public class WhatsAppService {
     }
 
     // automatic=false for a manual tap of "Send List", true when the scheduler fired it.
+    // Note: We no longer build and send plain text. Meta requires pre-approved templates
+    // outside the 24-hour messaging window. Use the "grocery" template instead.
     public WhatsAppSendResponse sendGroceryList(String username, String toNumber, LocalDate date,
                                                  List<GroceryItem> items, boolean automatic) {
-        String text = buildMessage(date, items);
         String digitsOnlyNumber = toNumber.replaceAll("[^0-9]", "");
 
         boolean apiConfigured = phoneNumberId != null && !phoneNumberId.isBlank()
@@ -54,33 +56,52 @@ public class WhatsAppService {
         WhatsAppSendResponse response;
         if (apiConfigured) {
             try {
-                sendViaCloudApi(digitsOnlyNumber, text);
+                sendViaCloudApi(digitsOnlyNumber, date, items);
                 response = new WhatsAppSendResponse(true, "Message sent via WhatsApp Cloud API.", null);
             } catch (Exception ex) {
-                // Fall back to a wa.me link if the direct send fails (e.g. bad token, unverified number)
+                // Fall back to a wa.me link if the direct send fails
+                String text = buildPlainTextFallback(date, items);
                 String link = buildWaLink(digitsOnlyNumber, text);
                 response = new WhatsAppSendResponse(false,
                         "Direct send failed (" + ex.getMessage() + "). Use the link instead.", link);
             }
         } else {
+            String text = buildPlainTextFallback(date, items);
             String link = buildWaLink(digitsOnlyNumber, text);
             response = new WhatsAppSendResponse(false,
                     "WhatsApp Cloud API not configured on the server - open this link to send manually.", link);
         }
 
-        sentMessageRepository.save(new SentMessage(username, date, digitsOnlyNumber, "WHATSAPP", text,
+        // Log: we tried to send via the "grocery" template (even if we fell back to wa.me)
+        String logText = "[Template: grocery] Sent to " + digitsOnlyNumber + " for " + date;
+        sentMessageRepository.save(new SentMessage(username, date, digitsOnlyNumber, "WHATSAPP", logText,
                 response.isSentDirectly(), automatic));
         return response;
     }
 
-    private void sendViaCloudApi(String toNumber, String text) {
+    private void sendViaCloudApi(String toNumber, LocalDate date, List<GroceryItem> items) {
         String url = "https://graph.facebook.com/v20.0/" + phoneNumberId + "/messages";
+
+        String itemsText = buildItemsText(items);
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("messaging_product", "whatsapp");
         body.put("to", toNumber);
-        body.put("type", "text");
-        body.put("text", Map.of("body", text));
+        body.put("type", "template");
+        
+        Map<String, Object> template = new LinkedHashMap<>();
+        template.put("name", "grocery");
+        template.put("language", Map.of("code", "en"));
+        template.put("components", Arrays.asList(
+            Map.of(
+                "type", "body",
+                "parameters", Arrays.asList(
+                    Map.of("type", "text", "text", date.toString()),
+                    Map.of("type", "text", "text", itemsText)
+                )
+            )
+        ));
+        body.put("template", template);
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -95,9 +116,27 @@ public class WhatsAppService {
         return "https://wa.me/" + toNumber + "?text=" + encoded;
     }
 
-    private String buildMessage(LocalDate date, List<GroceryItem> items) {
+    // Format items for the {{items}} placeholder in the template
+    private String buildItemsText(List<GroceryItem> items) {
         StringBuilder sb = new StringBuilder();
-        sb.append("*Grocery List - ").append(date.format(DateTimeFormatter.ISO_LOCAL_DATE)).append("*\n\n");
+        int i = 1;
+        for (GroceryItem item : items) {
+            sb.append(i++).append(". ").append(item.getName());
+            if (item.getQty() != null && !item.getQty().isBlank()) {
+                sb.append(" - ").append(item.getQty());
+            }
+            if (item.isChecked()) {
+                sb.append(" \u2713");
+            }
+            sb.append("\n");
+        }
+        return sb.toString().trim();
+    }
+
+    // Fallback plain text for wa.me link (when template can't be used)
+    private String buildPlainTextFallback(LocalDate date, List<GroceryItem> items) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("*Grocery List - ").append(date).append("*\n\n");
 
         int i = 1;
         for (GroceryItem item : items) {
